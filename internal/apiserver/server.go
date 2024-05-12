@@ -77,6 +77,10 @@ func (s *server) StopCommand() http.HandlerFunc {
 			s.error(w, r, http.StatusBadRequest, errors.New("script already failed"))
 			s.logger.Info("script already failed")
 			return
+		case "stopped":
+			s.error(w, r, http.StatusBadRequest, errors.New("script already stopped"))
+			s.logger.Info("script already stopped")
+			return
 		default:
 			scripts := strings.Split(command.Script, ";")
 			cansel, ok := s.ctxs[id]
@@ -94,15 +98,18 @@ func (s *server) StopCommand() http.HandlerFunc {
 			if len(scripts) > 1 {
 				cansel()
 			}
-			err := process.Kill()
+			if &process != nil {
+				err := process.Kill()
 
-			if err != nil {
-				s.error(w, r, http.StatusInternalServerError, errors.New("Ooops..."))
-				s.logger.Error("problem with kill")
-				return
+				if err != nil {
+					s.error(w, r, http.StatusInternalServerError, errors.New("Ooops..."))
+					s.logger.Error("problem with kill")
+					return
+				}
+
+				s.respond(w, r, http.StatusCreated, "Commands stopped")
 			}
 
-			s.respond(w, r, http.StatusCreated, "Commands stopped")
 		}
 	}
 }
@@ -160,6 +167,13 @@ func (s *server) CreateCommand() http.HandlerFunc {
 					newCommand.Status = "in process"
 				}
 				newCommand.Output = string(out)
+				newCommand.Status = "completed"
+				err = s.tracker.Command().Update(newCommand)
+				if err != nil {
+					s.error(w, r, http.StatusInternalServerError, err)
+					s.logger.Error("Error on SQL:", err)
+					return
+				}
 				ch <- true
 			}(ch)
 			select {
@@ -194,7 +208,7 @@ func (s *server) CreateCommand() http.HandlerFunc {
 						if script == "" {
 							continue
 						}
-						cmd := exec.Command("bash", "-c", commands[0])
+						cmd := exec.Command("bash", "-c", script)
 						s.cmds[newCommand.Id] = cmd.Process
 						out, err := cmd.CombinedOutput()
 
