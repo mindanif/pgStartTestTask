@@ -14,14 +14,12 @@ import (
 
 const total_return = "[{\"id\":1,\"script\":\"ls -l\",\"status\":\"complete\",\"output\":\"\",\"created_at\":null},{\"id\":2,\"script\":\"ls -l\",\"status\":\"failed\",\"output\":\"\",\"created_at\":null},{\"id\":3,\"script\":\"ls -l\",\"status\":\"in process\",\"output\":\"\",\"created_at\":null},{\"id\":4,\"script\":\"ls -l\",\"status\":\"stopped\",\"output\":\"\",\"created_at\":null}]\n"
 
-// MockTracker это мок службы, предоставляющий заглушки для методов, необходимых для тестирования сервера.
 type MockTracker struct{}
 
 func (m *MockTracker) Command() service.CommandRepository {
 	return &MockCommandRepository{}
 }
 
-// MockCommandRepository это мок службы команд, предоставляющий заглушки для методов.
 type MockCommandRepository struct{}
 
 func (m *MockCommandRepository) Create(command *model.Command) error {
