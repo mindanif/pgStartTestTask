@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"net/http"
+	"os"
 	"os/exec"
 	"pgStartTestTask/internal/storage/model"
 	"pgStartTestTask/internal/storage/service"
@@ -22,10 +23,11 @@ type server struct {
 	logger  *logrus.Logger
 	tracker service.Tracker
 	ctxs    map[int]context.CancelFunc
-	cmds    map[int]Process
+	cmds    map[int]*exec.Cmd
 }
 type Process interface {
 	Kill() error
+	Signal(sign os.Signal) error
 }
 
 func newServer(tracker service.Tracker) *server {
@@ -34,7 +36,7 @@ func newServer(tracker service.Tracker) *server {
 		logger:  logrus.New(),
 		tracker: tracker,
 		ctxs:    make(map[int]context.CancelFunc),
-		cmds:    make(map[int]Process),
+		cmds:    make(map[int]*exec.Cmd),
 	}
 
 	s.configureRouter()
@@ -89,26 +91,25 @@ func (s *server) StopCommand() http.HandlerFunc {
 				s.logger.Error("not in ctx")
 				return
 			}
-			process, ok := s.cmds[id]
+			cmd, ok := s.cmds[id]
 			if !ok {
 				s.error(w, r, http.StatusInternalServerError, errors.New("Ooops..."))
-				s.logger.Error("not in cmds")
+				s.logger.Error("not in cmds ")
 				return
 			}
 			if len(scripts) > 1 {
 				cansel()
 			}
-			if &process != nil {
-				err := process.Kill()
 
-				if err != nil {
-					s.error(w, r, http.StatusInternalServerError, errors.New("Ooops..."))
-					s.logger.Error("problem with kill")
-					return
-				}
+			err := cmd.Process.Kill()
 
-				s.respond(w, r, http.StatusCreated, "Commands stopped")
+			if err != nil {
+				s.error(w, r, http.StatusInternalServerError, errors.New("Ooops..."))
+				s.logger.Error("problem with kill ", err)
+				return
 			}
+
+			s.respond(w, r, http.StatusCreated, "Commands stopped")
 
 		}
 	}
@@ -146,7 +147,8 @@ func (s *server) CreateCommand() http.HandlerFunc {
 			ch := make(chan bool)
 			go func(ch chan bool) {
 				cmd := exec.Command("bash", "-c", commands[0])
-				s.cmds[newCommand.Id] = cmd.Process
+
+				s.cmds[newCommand.Id] = cmd
 				out, err := cmd.CombinedOutput()
 				if err != nil {
 					if err.Error() == errKilled {
@@ -209,7 +211,7 @@ func (s *server) CreateCommand() http.HandlerFunc {
 							continue
 						}
 						cmd := exec.Command("bash", "-c", script)
-						s.cmds[newCommand.Id] = cmd.Process
+						s.cmds[newCommand.Id] = cmd
 						out, err := cmd.CombinedOutput()
 
 						newCommand.Output += string(out)
